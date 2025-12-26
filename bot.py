@@ -7,7 +7,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 TOKEN = "8460659430:AAEQ2ZfQWGi0XI8mgtLY_U7eCCPYIkiHmDE"
 
 # Список участников (можно менять)
-ROOMMATES = ["Андрей", "Маша", "Сергей", "Кот (но он только спит)"]
+ROOMMATES = ["Саша", "Паша", "Руслан", "Виталий", "Иванна"]
 
 # Переменная для хранения индекса текущего дежурного (начинаем с первого - 0)
 current_cleaner_index = 0
