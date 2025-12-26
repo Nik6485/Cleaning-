@@ -1,39 +1,114 @@
 import logging
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
 # --- НАСТРОЙКИ ---
-# Вставь сюда токен, который дал BotFather
 TOKEN = "8460659430:AAEQ2ZfQWGi0XI8mgtLY_U7eCCPYIkiHmDE"
 
-# Список участников (можно менять)
-ROOMMATES = ["Саша", "Паша", "Руслан", "Виталий", "Иванна"]
+# Список участников
+ROOMMATES = ["Паша", "Саша", "Виталик","Руслан", "Иванна"]
 
-# Переменная для хранения индекса текущего дежурного (начинаем с первого - 0)
-current_cleaner_index = 0
+# Длительность дежурства одного человека (в днях)
+ROTATION_DAYS = 7 
 
-# Настройка логирования (чтобы видеть ошибки в консоли)
+# Дата начала самого первого дежурства (Год, Месяц, День)
+# Важно: Это "якорь", от которого считается весь график.
+# Укажи здесь понедельник первой недели цикла.
+START_DATE = datetime(2023, 10, 23) 
+
+# --- ЛОГИРОВАНИЕ ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# --- ФУНКЦИИ БОТА ---
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+
+def get_cleaner_info(target_date):
+    """
+    Вычисляет, кто дежурит в заданную дату, и даты начала/конца смены.
+    """
+    # Считаем разницу дней между целевой датой и датой начала
+    delta = target_date - START_DATE
+    days_passed = delta.days
+    
+    # Если дата в прошлом (до начала отсчета), возвращаем первого
+    if days_passed < 0:
+        return ROOMMATES[0], START_DATE, START_DATE + timedelta(days=ROTATION_DAYS)
+
+    # Вычисляем номер смены (сколько полных циклов прошло)
+    shift_number = days_passed // ROTATION_DAYS
+    
+    # Вычисляем индекс человека (остаток от деления на кол-во людей)
+    person_index = shift_number % len(ROOMMATES)
+    
+    # Вычисляем даты начала и конца этой конкретной смены
+    current_shift_start = START_DATE + timedelta(days=shift_number * ROTATION_DAYS)
+    current_shift_end = current_shift_start + timedelta(days=ROTATION_DAYS - 1)
+    
+    return ROOMMATES[person_index], current_shift_start, current_shift_end
+
+# --- КОМАНДЫ БОТА ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Приветствие при команде /start"""
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Привет! Я бот-распределитель уборки.\n"
+        text="👋 Привет! Я автоматический календарь уборки.\n\n"
              "Команды:\n"
-             "/status - Кто дежурит сейчас?\n"
-             "/next - Сменить дежурного (передать эстафету)"
+             "/status - Кто дежурит сегодня?\n"
+             "/schedule - График на ближайшие 8 недель"
     )
 
 async def get_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает, чья сейчас очередь"""
-    global current_cleaner_index
-    cleaner = ROOMMATES[current_cleaner_index]
+    """Показывает текущего дежурного на основе сегодняшней даты"""
+    today = datetime.now()
+    cleaner, start_d, end_d = get_cleaner_info(today)
+    
+    # Форматируем даты в красивый вид (День.Месяц)
+    fmt_start = start_d.strftime('%d.%m')
+    fmt_end = end_d.strftime('%d.%m')
+    
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"📅 **Сегодня ({today.strftime('%d.%m')})**\n\n"
+             f"🧹 Дежурный: **{cleaner}**\n"
+             f"🕒 Смена: с {fmt_start} по {fmt_end}"
+    )
+
+async def get_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Генерирует список на будущее"""
+    today = datetime.now()
+    response_text = "📋 **График на ближайшее время:**\n\n"
+    
+    # Показываем график на 8 смен вперед
+    for i in range(8):
+        # Берем дату начала следующей смены
+        future_date = today + timedelta(days=i * ROTATION_DAYS)
+        cleaner, start_d, end_d = get_cleaner_info(future_date)
+        
+        fmt_start = start_d.strftime('%d.%m')
+        fmt_end = end_d.strftime('%d.%m')
+        
+        # Добавляем строчку в ответ
+        response_text += f"🔹 **{fmt_start} - {fmt_end}**: {cleaner}\n"
+        
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=response_text
+    )
+
+# --- ЗАПУСК ---
+
+if __name__ == '__main__':
+    application = ApplicationBuilder().token(TOKEN).build()
+    
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('status', get_status))
+    application.add_handler(CommandHandler('schedule', get_schedule))
+    
+    print("Бот с автоматическим календарем запущен...")
+    application.run_polling()
     
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
